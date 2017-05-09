@@ -1,8 +1,9 @@
 import gillespy
-import numpy as np
 import os
 import sys
+import dill
 import math
+import numpy as np
 from tqdm import tqdm
 
 
@@ -47,12 +48,27 @@ class SIR(gillespy.Model):
         return
 
 
-def create_dir_if_it_does_not_exist(file_path):
-    if not os.path.exists(file_path):
-        os.makedirs(file_path)
+def get_histogram_settings(nb_histogram_settings, dataset_folder, dataset_id):
+    x_filepath = os.path.join(dataset_folder, str(dataset_id) + '_x_rescaled.npy')
+    with open(x_filepath, 'rb') as f:
+        x_data = np.load(f)
+
+    scaler_filepath = os.path.join(dataset_folder, str(dataset_id) + '_scaler.h5')
+    with open(scaler_filepath, 'rb') as f:
+        scaler = dill.load(f)
+
+    nb_samples = x_data.shape[0]
+    settings_index = list(np.random.randint(low=0, high=nb_samples - 1,
+                                            size=nb_histogram_settings))
+    settings_rescaled = x_data[settings_index, 0, :]
+    settings_shape = settings_rescaled.shape
+    flat_settings_rescaled = settings_rescaled.reshape(-1, settings_shape[-1])
+    flat_settings = scaler.inverse_trasform(flat_settings_rescaled)
+    settings = flat_settings.reshape(settings_shape)
+    return settings
 
 
-def simulate(settings, nb_settings, nb_trajectories, dataset_folder, prefix='partial_'):
+def simulate(settings, nb_settings, nb_trajectories, dataset_folder, prefix='histogram_partial_'):
     for j in tqdm(range(nb_settings)):
         initial_values = settings[j]
         single_simulation(initial_values, nb_trajectories, dataset_folder, prefix, j)
@@ -75,7 +91,7 @@ def save_simulation_data(dataset, dataset_folder, prefix, id_number):
     return
 
 
-def concatenate_simulations(nb_settings, dataset_folder, prefix='partial_'):
+def concatenate_simulations(nb_settings, dataset_folder, prefix='histogram_partial_'):
     for i in tqdm(range(nb_settings)):
         partial_dataset_filename = str(prefix) + str(i) + '.npy'
         partial_dataset_filepath = os.path.join(dataset_folder, partial_dataset_filename)
@@ -90,23 +106,28 @@ def concatenate_simulations(nb_settings, dataset_folder, prefix='partial_'):
 
 
 if __name__ == '__main__':
-    dataset_id = int(sys.argv[1])
-    nb_settings = int(sys.argv[2])
-    nb_trajectories = int(sys.argv[3])
-    timestep = float(sys.argv[4])
-    endtime = float(sys.argv[5])
-    data_root_folder = str(sys.argv[6])
 
-    dataset_folder = os.path.join(data_root_folder, str(timestep))
-    dataset_folder = os.path.join(dataset_folder, str(dataset_id))
-    create_dir_if_it_does_not_exist(dataset_folder)
+    timestep = float(sys.argv[1])
+    nb_past_timesteps = int(sys.argv[2])
+    dataset_id = int(sys.argv[3])
+    nb_histogram_settings = int(sys.argv[4])
+    nb_trajectories = int(sys.argv[5])
+    project_folder = str(sys.argv[6])
 
-    model = SIR(endtime, timestep)
+    dataset_folder = os.path.join(project_folder, 'dataset/data/' +
+                                                  str(timestep) + '/' +
+                                                  str(dataset_id))
 
-    settings = np.random.randint(low=30, high=200, size=(nb_settings, 3))
-    simulate(settings, nb_settings, nb_trajectories, dataset_folder, prefix='partial_')
-    dataset = concatenate_simulations(nb_settings, dataset_folder, prefix='partial_')
+    model = SIR(endtime=nb_past_timesteps * timestep, timestep=timestep)
 
-    dataset_filepath = os.path.join(dataset_folder, str(dataset_id) + '.npy')
-    with open(dataset_filepath, 'wb') as f:
-        np.save(f, dataset)
+    settings = get_histogram_settings(nb_histogram_settings, dataset_folder, dataset_id)
+    histogram_settings_filepath = os.path.join(dataset_folder, 'histogram_settings.npy')
+    with open(histogram_settings_filepath, 'wb') as f:
+        np.save(f, settings)
+
+    simulate(settings, nb_histogram_settings, nb_trajectories, dataset_folder, prefix='partial_')
+    histogram_dataset = concatenate_simulations(nb_histogram_settings, dataset_folder, prefix='partial_')
+
+    histogram_dataset_filepath = os.path.join(dataset_folder, 'histogram_dataset.npy')
+    with open(histogram_dataset_filepath, 'wb') as f:
+        np.save(f, histogram_dataset)
