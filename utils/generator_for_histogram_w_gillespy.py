@@ -1,7 +1,6 @@
 import gillespy
 import os
 import sys
-import dill
 import math
 import numpy as np
 from tqdm import tqdm
@@ -48,23 +47,15 @@ class SIR(gillespy.Model):
         return
 
 
-def get_histogram_settings(nb_histogram_settings, dataset_folder, dataset_id):
-    x_filepath = os.path.join(dataset_folder, str(dataset_id) + '_x_rescaled.npy')
+def get_histogram_settings(nb_histogram_settings, dataset_folder):
+    x_filepath = os.path.join(dataset_folder, 'x.npy')
     with open(x_filepath, 'rb') as f:
         x_data = np.load(f)
-
-    scaler_filepath = os.path.join(dataset_folder, str(dataset_id) + '_scaler.h5')
-    with open(scaler_filepath, 'rb') as f:
-        scaler = dill.load(f)
 
     nb_samples = x_data.shape[0]
     settings_index = list(np.random.randint(low=0, high=nb_samples - 1,
                                             size=nb_histogram_settings))
-    settings_rescaled = x_data[settings_index, 0, :]
-    settings_shape = settings_rescaled.shape
-    flat_settings_rescaled = settings_rescaled.reshape(-1, settings_shape[-1])
-    flat_settings = scaler.inverse_trasform(flat_settings_rescaled)
-    settings = flat_settings.reshape(settings_shape)
+    settings = x_data[settings_index, 0, :]
     return settings
 
 
@@ -91,16 +82,16 @@ def save_simulation_data(dataset, dataset_folder, prefix, id_number):
     return
 
 
-def concatenate_simulations(nb_settings, dataset_folder, prefix='histogram_partial_'):
+def stack_simulations(nb_settings, dataset_folder, prefix='histogram_partial_'):
     for i in tqdm(range(nb_settings)):
         partial_dataset_filename = str(prefix) + str(i) + '.npy'
         partial_dataset_filepath = os.path.join(dataset_folder, partial_dataset_filename)
         with open(partial_dataset_filepath, 'rb') as f:
             partial_dataset = np.load(f)
         if i == 0:
-            final_dataset = partial_dataset
+            final_dataset = partial_dataset[np.newaxis, ...]
         else:
-            final_dataset = np.concatenate((final_dataset, partial_dataset), axis=0)
+            final_dataset = np.concatenate((final_dataset, partial_dataset[np.newaxis, ...]), axis=0)
         os.remove(partial_dataset_filepath)
     return final_dataset
 
@@ -120,13 +111,13 @@ if __name__ == '__main__':
 
     model = SIR(endtime=nb_past_timesteps * timestep, timestep=timestep)
 
-    settings = get_histogram_settings(nb_histogram_settings, dataset_folder, dataset_id)
+    settings = get_histogram_settings(nb_histogram_settings, dataset_folder)
     histogram_settings_filepath = os.path.join(dataset_folder, 'histogram_settings.npy')
     with open(histogram_settings_filepath, 'wb') as f:
         np.save(f, settings)
 
     simulate(settings, nb_histogram_settings, nb_trajectories, dataset_folder, prefix='partial_')
-    histogram_dataset = concatenate_simulations(nb_histogram_settings, dataset_folder, prefix='partial_')
+    histogram_dataset = stack_simulations(nb_histogram_settings, dataset_folder, prefix='partial_')
 
     histogram_dataset_filepath = os.path.join(dataset_folder, 'histogram_dataset.npy')
     with open(histogram_dataset_filepath, 'wb') as f:

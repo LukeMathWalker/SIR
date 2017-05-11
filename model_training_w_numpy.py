@@ -20,9 +20,9 @@ def create_dir_if_it_does_not_exist(file_path):
 
 def get_dataset(data_folder, dataset_id):
     dataset_folder = os.path.join(data_folder, str(dataset_id))
-    x_filepath = os.path.join(dataset_folder, str(dataset_id) + '_x_rescaled.npy')
-    y_filepath = os.path.join(dataset_folder, str(dataset_id) + '_y_rescaled.npy')
-    scaler_filepath = os.path.join(dataset_folder, str(dataset_id) + '_scaler.h5')
+    x_filepath = os.path.join(dataset_folder, 'x_rescaled.npy')
+    y_filepath = os.path.join(dataset_folder, 'y_rescaled.npy')
+    scaler_filepath = os.path.join(dataset_folder, 'scaler.h5')
     with open(x_filepath, 'rb') as f:
         x = np.load(f)
     with open(y_filepath, 'rb') as f:

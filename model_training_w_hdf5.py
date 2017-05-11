@@ -103,7 +103,7 @@ scaler = training_dataset.scaler
 scaler_address = os.path.join(dataset_folder,
                               'scaler_for_' + training_dataset_name + '.h5')
 with open(scaler_address, 'wb') as f:
-    dill.dump(scaler, f)
+    dill.dump(scaler, f, protocol=2)
 
 validation_dataset = prepare_dataset(dataset_folder,
                                      validation_dataset_name,

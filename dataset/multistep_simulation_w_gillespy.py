@@ -107,6 +107,6 @@ if __name__ == '__main__':
     simulate(settings, nb_settings, nb_trajectories, dataset_folder, prefix='partial_')
     dataset = concatenate_simulations(nb_settings, dataset_folder, prefix='partial_')
 
-    dataset_filepath = os.path.join(dataset_folder, str(dataset_id) + '.npy')
+    dataset_filepath = os.path.join(dataset_folder, 'dataset.npy')
     with open(dataset_filepath, 'wb') as f:
         np.save(f, dataset)

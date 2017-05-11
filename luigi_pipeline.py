@@ -23,11 +23,10 @@ class GenerateDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
                 self.nb_of_trajectories, self.timestep, self.endtime, data_folder]
 
     def output(self):
-        dataset_filename = str(self.dataset_id) + '.npy'
         folder_address = os.path.join(self.project_folder, 'dataset/data/' +
                                                            str(self.timestep) + '/' +
                                                            str(self.dataset_id))
-        output_address = os.path.join(folder_address, dataset_filename)
+        output_address = os.path.join(folder_address, 'dataset.npy')
         return luigi.LocalTarget(output_address)
 
 
@@ -53,11 +52,15 @@ class FormatDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
         dataset_folder = os.path.join(self.project_folder, 'dataset/data/' +
                                                            str(self.timestep) + '/' +
                                                            str(self.dataset_id))
-        x_filepath = os.path.join(dataset_folder, str(self.dataset_id) + '_x_rescaled.npy')
-        y_filepath = os.path.join(dataset_folder, str(self.dataset_id) + '_y_rescaled.npy')
-        scaler_filepath = os.path.join(dataset_folder, str(self.dataset_id) + '_scaler.h5')
+        x_rescaled_filepath = os.path.join(dataset_folder, 'x_rescaled.npy')
+        y_rescaled_filepath = os.path.join(dataset_folder, 'y_rescaled.npy')
+        x_filepath = os.path.join(dataset_folder, 'x.npy')
+        y_filepath = os.path.join(dataset_folder, 'y.npy')
+        scaler_filepath = os.path.join(dataset_folder, 'scaler.h5')
         return [luigi.LocalTarget(x_filepath),
                 luigi.LocalTarget(y_filepath),
+                luigi.LocalTarget(x_rescaled_filepath),
+                luigi.LocalTarget(y_rescaled_filepath),
                 luigi.LocalTarget(scaler_filepath)]
 
 
@@ -143,7 +146,7 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
     timestep = luigi.FloatParameter(default=2**(-1))
     nb_past_timesteps = luigi.IntParameter(default=1)
     model_id = luigi.IntParameter(default=1)
-    nb_histogram_settings = luigi.IntParameter(default=15)
+    nb_histogram_settings = luigi.IntParameter(default=2)
     nb_trajectories = luigi.IntParameter(default=500)
 
     def requires(self):
@@ -172,6 +175,20 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
                 self.validation_dataset_id, self.model_id,
                 self.project_folder]
 
+    def output(self):
+        train_folder = os.path.join(self.project_folder, 'dataset/data/' +
+                                                         str(self.timestep) + '/' +
+                                                         str(self.training_dataset_id) +
+                                                         'histogram/model_' + str(self.model_id))
+        train_histogram_filepath = os.path.join(train_folder, 'log.txt')
+        val_folder = os.path.join(self.project_folder, 'dataset/data/' +
+                                                       str(self.timestep) + '/' +
+                                                       str(self.validation_dataset_id) +
+                                                       'histogram/model_' + str(self.model_id))
+        val_histogram_filepath = os.path.join(val_folder, 'log.txt')
+        return [luigi.LocalTarget(train_histogram_filepath),
+                luigi.LocalTarget(val_histogram_filepath)]
+
 
 if __name__ == '__main__':
-    luigi.run(main_task_cls=TrainNN)
+    luigi.run(main_task_cls=HistogramDistance)
