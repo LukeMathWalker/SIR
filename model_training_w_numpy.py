@@ -1,49 +1,18 @@
 import sys
-import os
-import dill
-import numpy as np
-from tqdm import tqdm
 from stochnet.classes.NeuralNetworks import StochNeuralNetwork
-from stochnet.classes.TopLayers import MultivariateNormalCholeskyOutputLayer, MultivariateLogNormalOutputLayer, MixtureOutputLayer, MultivariateNormalDiagOutputLayer
+from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
 from stochnet.utils.iterator import NumpyArrayIterator
-from keras.layers import Input, LSTM, Dense, Dropout, Flatten
+from stochnet.utils.file_organization import ProjectFileExplorer, get_rescaled_dataset
+from stochnet.utils.utils import change_scaling
+from keras.layers import Input, Dense, Flatten
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm
-from keras.regularizers import l2
-import tensorflow as tf
-
-
-def create_dir_if_it_does_not_exist(file_path):
-    if not os.path.exists(file_path):
-        os.makedirs(file_path)
-
-
-def get_dataset(data_folder, dataset_id):
-    dataset_folder = os.path.join(data_folder, str(dataset_id))
-    x_filepath = os.path.join(dataset_folder, 'x_rescaled.npy')
-    y_filepath = os.path.join(dataset_folder, 'y_rescaled.npy')
-    scaler_filepath = os.path.join(dataset_folder, 'scaler.h5')
-    with open(x_filepath, 'rb') as f:
-        x = np.load(f)
-    with open(y_filepath, 'rb') as f:
-        y = np.load(f)
-    with open(scaler_filepath, 'rb') as f:
-        scaler = dill.load(f)
-    return x, y, scaler
-
-
-def change_scaling(data, old_scaler, new_scaler):
-    data_shape = data.shape
-    flat_data = data.reshape((-1, data_shape[-1]))
-    flat_data = scaler_train.transform(scaler_val.inverse_transform(flat_data))
-    data = flat_data.reshape(data_shape)
-    return data
 
 
 def get_NN(nb_past_timesteps, nb_features):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
     flatten1 = Flatten()(input_tensor)
-    NN_body = Dense(128, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
+    NN_body = Dense(500, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
 
     number_of_components = 2
     components = []
@@ -64,29 +33,28 @@ if __name__ == '__main__':
     project_folder = str(sys.argv[5])
     model_id = int(sys.argv[6])
 
-    data_folder = os.path.join(project_folder, 'dataset/data/' + str(timestep))
-    x_train, y_train, scaler_train = get_dataset(data_folder, train_dataset_id)
-    x_val, y_val, scaler_val = get_dataset(data_folder, val_dataset_id)
+    project_explorer = ProjectFileExplorer(project_folder)
+    train_explorer = project_explorer.get_DatasetFileExplorer(timestep, train_dataset_id)
+    val_explorer = project_explorer.get_DatasetFileExplorer(timestep, train_dataset_id)
+    rescaled_x_train, rescaled_y_train, scaler_train = get_rescaled_dataset(train_explorer)
+    rescaled_x_val, rescaled_y_val, scaler_val = get_rescaled_dataset(val_explorer)
 
-    nb_features = x_train.shape[-1]
-    x_val = change_scaling(x_val, scaler_val, scaler_train)
-    y_val = change_scaling(y_val, scaler_val, scaler_train)
+    nb_features = rescaled_x_train.shape[-1]
+    rescaled_x_val = change_scaling(rescaled_x_val, scaler_val, scaler_train)
+    rescaled_y_val = change_scaling(rescaled_y_val, scaler_val, scaler_train)
 
     batch_size = 64
-    training_generator = NumpyArrayIterator(x_train, y_train,
+    training_generator = NumpyArrayIterator(rescaled_x_train, rescaled_y_train,
                                             batch_size=batch_size,
                                             shuffle=True)
-    validation_generator = NumpyArrayIterator(x_val, y_val,
+    validation_generator = NumpyArrayIterator(rescaled_x_val, rescaled_y_val,
                                               batch_size=batch_size,
                                               shuffle=True)
 
     NN = get_NN(nb_past_timesteps, nb_features)
     NN.memorize_scaler(scaler_train)
 
-    model_directory = os.path.join(project_folder, 'models/' +
-                                                   str(timestep) + '/' +
-                                                   str(model_id))
-    create_dir_if_it_does_not_exist(model_directory)
+    model_explorer = project_explorer.get_ModelFileExplorer(timestep, model_id)
 
     callbacks = []
     callbacks.append(EarlyStopping(monitor='val_loss',
@@ -94,7 +62,7 @@ if __name__ == '__main__':
                                    verbose=1,
                                    mode='min'))
 
-    checkpoint_filepath = os.path.join(model_directory, 'best_weights.h5')
+    checkpoint_filepath = model_explorer.weights_fp
     callbacks.append(ModelCheckpoint(checkpoint_filepath, monitor='val_loss',
                                      verbose=1, save_best_only=True,
                                      save_weights_only=True, mode='min'))
@@ -107,8 +75,5 @@ if __name__ == '__main__':
     print(lowest_val_loss)
 
     NN.load_weights(checkpoint_filepath)
-    model_filepath = os.path.join(model_directory, 'keras_model.h5')
-    NN.save_model(model_filepath)
-
-    filepath = os.path.join(model_directory, 'StochNet_object.h5')
-    NN.save(filepath)
+    NN.save_model(model_explorer.keras_fp)
+    NN.save(model_explorer.StochNet_fp)

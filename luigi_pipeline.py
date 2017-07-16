@@ -1,33 +1,33 @@
 import os
 import luigi
 import luigi.contrib.external_program
+from importlib import import_module
+from stochnet.utils.file_organization import ProjectFileExplorer
 
 
 class GenerateDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
 
     project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
     dataset_id = luigi.IntParameter(default=1)
-    nb_of_settings = luigi.IntParameter(default=2)
+    nb_of_settings = luigi.IntParameter(default=25)
     nb_of_trajectories = luigi.IntParameter(default=100)
     timestep = luigi.FloatParameter(default=2**(-1))
     endtime = luigi.IntParameter(default=5)
+    CRN_name = luigi.Parameter(default='SIR')
 
     virtualenv = '/home/lucap/anaconda3/envs/py2'
 
     def program_args(self):
-        dataset_folder = os.path.join(self.project_folder, 'dataset')
-        program_address = os.path.join(dataset_folder,
-                                       'multistep_simulation_w_gillespy.py')
-        data_folder = os.path.join(dataset_folder, 'data')
+        program_module = import_module("stochnet.dataset.simulation_w_gillespy")
+        program_address = program_module.__file__
         return ['python', program_address, self.dataset_id, self.nb_of_settings,
-                self.nb_of_trajectories, self.timestep, self.endtime, data_folder]
+                self.nb_of_trajectories, self.timestep, self.endtime,
+                self.project_folder, self.CRN_name]
 
     def output(self):
-        folder_address = os.path.join(self.project_folder, 'dataset/data/' +
-                                                           str(self.timestep) + '/' +
-                                                           str(self.dataset_id))
-        output_address = os.path.join(folder_address, 'dataset.npy')
-        return luigi.LocalTarget(output_address)
+        project_explorer = ProjectFileExplorer(self.project_folder)
+        dataset_explorer = project_explorer.get_DatasetFileExplorer(self.timestep, self.dataset_id)
+        return luigi.LocalTarget(dataset_explorer.dataset_fp)
 
 
 class FormatDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
@@ -43,25 +43,19 @@ class FormatDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
                                timestep=self.timestep)
 
     def program_args(self):
-        program_address = os.path.join(self.project_folder,
-                                       'utils/format_for_ML_w_numpy.py')
+        program_module = import_module("stochnet.utils.format_np_for_ML")
+        program_address = program_module.__file__
         return ['python', program_address, self.nb_past_timesteps,
                 self.dataset_id, self.timestep, self.project_folder]
 
     def output(self):
-        dataset_folder = os.path.join(self.project_folder, 'dataset/data/' +
-                                                           str(self.timestep) + '/' +
-                                                           str(self.dataset_id))
-        x_rescaled_filepath = os.path.join(dataset_folder, 'x_rescaled.npy')
-        y_rescaled_filepath = os.path.join(dataset_folder, 'y_rescaled.npy')
-        x_filepath = os.path.join(dataset_folder, 'x.npy')
-        y_filepath = os.path.join(dataset_folder, 'y.npy')
-        scaler_filepath = os.path.join(dataset_folder, 'scaler.h5')
-        return [luigi.LocalTarget(x_filepath),
-                luigi.LocalTarget(y_filepath),
-                luigi.LocalTarget(x_rescaled_filepath),
-                luigi.LocalTarget(y_rescaled_filepath),
-                luigi.LocalTarget(scaler_filepath)]
+        project_explorer = ProjectFileExplorer(self.project_folder)
+        dataset_explorer = project_explorer.get_DatasetFileExplorer(self.timestep, self.dataset_id)
+        return [luigi.LocalTarget(dataset_explorer.x_fp),
+                luigi.LocalTarget(dataset_explorer.y_fp),
+                luigi.LocalTarget(dataset_explorer.rescaled_x_fp),
+                luigi.LocalTarget(dataset_explorer.rescaled_y_fp),
+                luigi.LocalTarget(dataset_explorer.scaler_fp)]
 
 
 class TrainNN(luigi.contrib.external_program.ExternalPythonProgramTask):
@@ -92,15 +86,11 @@ class TrainNN(luigi.contrib.external_program.ExternalPythonProgramTask):
                 self.model_id]
 
     def output(self):
-        model_folder = os.path.join(self.project_folder, 'models/' +
-                                                         str(self.timestep) + '/' +
-                                                         str(self.model_id))
-        weights_filepath = os.path.join(model_folder, 'best_weights.h5')
-        keras_filepath = os.path.join(model_folder, 'keras_model.h5')
-        StochNet_filepath = os.path.join(model_folder, 'StochNet_object.h5')
-        return [luigi.LocalTarget(weights_filepath),
-                luigi.LocalTarget(keras_filepath),
-                luigi.LocalTarget(StochNet_filepath)]
+        project_explorer = ProjectFileExplorer(self.project_folder)
+        model_explorer = project_explorer.get_ModelFileExplorer(self.timestep, self.model_id)
+        return [luigi.LocalTarget(model_explorer.weights_fp),
+                luigi.LocalTarget(model_explorer.keras_fp),
+                luigi.LocalTarget(model_explorer.StochNet_fp)]
 
 
 class GenerateHistogramData(luigi.contrib.external_program.ExternalPythonProgramTask):
@@ -111,6 +101,7 @@ class GenerateHistogramData(luigi.contrib.external_program.ExternalPythonProgram
     nb_past_timesteps = luigi.IntParameter(default=1)
     nb_histogram_settings = luigi.IntParameter(default=15)
     nb_trajectories = luigi.IntParameter(default=500)
+    CRN_name = luigi.Parameter(default='SIR')
 
     virtualenv = '/home/lucap/anaconda3/envs/py2'
 
@@ -121,21 +112,18 @@ class GenerateHistogramData(luigi.contrib.external_program.ExternalPythonProgram
                              nb_past_timesteps=self.nb_past_timesteps)
 
     def program_args(self):
-        program_address = os.path.join(self.project_folder,
-                                       'utils/generator_for_histogram_w_gillespy.py')
+        program_module = import_module("stochnet.dataset.generator_for_histogram_w_gillespy")
+        program_address = program_module.__file__
         return ['python', program_address, self.timestep,
                 self.nb_past_timesteps, self.dataset_id,
                 self.nb_histogram_settings, self.nb_trajectories,
-                self.project_folder]
+                self.project_folder, self.CRN_name]
 
     def output(self):
-        dataset_folder = os.path.join(self.project_folder, 'dataset/data/' +
-                                                           str(self.timestep) + '/' +
-                                                           str(self.dataset_id))
-        histogram_settings_filepath = os.path.join(dataset_folder, 'histogram_settings.npy')
-        histogram_dataset_filepath = os.path.join(dataset_folder, 'histogram_dataset.npy')
-        return [luigi.LocalTarget(histogram_settings_filepath),
-                luigi.LocalTarget(histogram_dataset_filepath)]
+        project_explorer = ProjectFileExplorer(self.project_folder)
+        dataset_explorer = project_explorer.get_DatasetFileExplorer(self.timestep, self.dataset_id)
+        return [luigi.LocalTarget(dataset_explorer.histogram_settings_fp),
+                luigi.LocalTarget(dataset_explorer.histogram_dataset_fp)]
 
 
 class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask):
@@ -146,7 +134,7 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
     timestep = luigi.FloatParameter(default=2**(-1))
     nb_past_timesteps = luigi.IntParameter(default=1)
     model_id = luigi.IntParameter(default=1)
-    nb_histogram_settings = luigi.IntParameter(default=2)
+    nb_histogram_settings = luigi.IntParameter(default=20)
     nb_trajectories = luigi.IntParameter(default=500)
 
     def requires(self):
@@ -168,26 +156,21 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
                                       nb_histogram_settings=self.nb_histogram_settings)]
 
     def program_args(self):
-        program_address = os.path.join(self.project_folder,
-                                       'metrics/histogram_w_gillespy.py')
+        program_module = import_module("stochnet.applicative.histogram_w_gillespy")
+        program_address = program_module.__file__
         return ['python', program_address, self.timestep,
                 self.nb_past_timesteps, self.training_dataset_id,
                 self.validation_dataset_id, self.model_id,
                 self.project_folder]
 
     def output(self):
-        train_folder = os.path.join(self.project_folder, 'dataset/data/' +
-                                                         str(self.timestep) + '/' +
-                                                         str(self.training_dataset_id) +
-                                                         'histogram/model_' + str(self.model_id))
-        train_histogram_filepath = os.path.join(train_folder, 'log.txt')
-        val_folder = os.path.join(self.project_folder, 'dataset/data/' +
-                                                       str(self.timestep) + '/' +
-                                                       str(self.validation_dataset_id) +
-                                                       'histogram/model_' + str(self.model_id))
-        val_histogram_filepath = os.path.join(val_folder, 'log.txt')
-        return [luigi.LocalTarget(train_histogram_filepath),
-                luigi.LocalTarget(val_histogram_filepath)]
+        project_explorer = ProjectFileExplorer(self.project_folder)
+        train_explorer = project_explorer.get_DatasetFileExplorer(self.timestep, self.training_dataset_id)
+        train_histogram_explorer = train_explorer.get_HistogramFileExplorer(self.model_id)
+        val_explorer = project_explorer.get_DatasetFileExplorer(self.timestep, self.validation_dataset_id)
+        val_histogram_explorer = val_explorer.get_HistogramFileExplorer(self.model_id)
+        return [luigi.LocalTarget(train_histogram_explorer.log_fp),
+                luigi.LocalTarget(val_histogram_explorer.log_fp)]
 
 
 if __name__ == '__main__':
