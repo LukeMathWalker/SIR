@@ -1,18 +1,22 @@
 import sys
 from stochnet.classes.NeuralNetworks import StochNeuralNetwork
-from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
-from stochnet.utils.file_organization import ProjectFileExplorer, get_train_and_validation_generator_w_scaler
 from keras.layers import Input, Dense, Flatten
+from stochnet.utils.file_organization import ProjectFileExplorer, get_train_and_validation_generator_w_scaler
+from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm
+from sklearn.model_selection import ParameterSampler
+from scipy.stats import randint, binom
 
 
-def get_NN(nb_past_timesteps, nb_features):
+def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
+           nb_components):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
     flatten1 = Flatten()(input_tensor)
-    NN_body = Dense(500, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
+    NN_body = Dense(nb_hidden_nodes_1, kernel_constraint=maxnorm(max_norm_1),
+                    activation='relu')(flatten1)
 
-    number_of_components = 2
+    number_of_components = nb_components
     components = []
     for j in range(number_of_components):
         components.append(MultivariateNormalDiagOutputLayer(nb_features))
@@ -40,8 +44,10 @@ if __name__ == '__main__':
                                                                              val_explorer)
 
     nb_features = scaler.scale_.shape[0]
-    NN = get_NN(nb_past_timesteps, nb_features)
-    NN.memorize_scaler(scaler)
+
+    param_grid = {'max_norm_1': randint(1, 5),
+                  'nb_hidden_nodes_1': binom(500, 0.5)}
+    param_list = list(ParameterSampler(param_grid, n_iter=50))
 
     model_explorer = project_explorer.get_ModelFileExplorer(timestep, model_id)
 
@@ -55,13 +61,17 @@ if __name__ == '__main__':
     callbacks.append(ModelCheckpoint(checkpoint_filepath, monitor='val_loss',
                                      verbose=1, save_best_only=True,
                                      save_weights_only=True, mode='min'))
-    result = NN.fit_generator(training_generator=train_gen,
-                              samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
-                              callbacks=callbacks,
-                              validation_generator=val_gen,
-                              nb_val_samples=10**3)
-    lowest_val_loss = min(result.history['val_loss'])
-    print(lowest_val_loss)
+
+    scores = []
+    for params in param_list:
+        NN = get_NN(nb_past_timesteps, nb_features, *params)
+        NN.memorize_scaler(scaler)
+        result = NN.fit_generator(training_generator=train_gen,
+                                  samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
+                                  callbacks=callbacks,
+                                  validation_generator=val_gen,
+                                  nb_val_samples=10**3)
+# Da finire
 
     NN.load_weights(checkpoint_filepath)
     NN.save_model(model_explorer.keras_fp)
