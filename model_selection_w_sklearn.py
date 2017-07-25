@@ -1,8 +1,11 @@
 import sys
+import tensorflow as tf
+from functools import partial
 from stochnet.classes.NeuralNetworks import StochNeuralNetwork
 from keras.layers import Input, Dense, Flatten
 from stochnet.utils.file_organization import ProjectFileExplorer, get_train_and_validation_generator_w_scaler
 from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
+from stochnet.applicative.histogram_w_gillespy import compute_histogram_distance, get_SSA_hist, get_SSA_traj
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm
 from sklearn.model_selection import ParameterSampler
@@ -26,7 +29,39 @@ def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
     return NN
 
 
+def get_best_NN(param_list, get_model, scaler, train_gen, val_gen, callbacks):
+    best_params = get_best_params(param_list, scaler, get_model, train_gen, val_gen, callbacks)
+    best_NN = get_trained_NN(best_params, get_model, scaler, train_gen, val_gen, callbacks)
+    return best_NN
+
+
+def get_best_params(param_list, get_model, scaler, train_gen, val_gen, callbacks):
+    scores = []
+    for params in param_list:
+        NN = get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks)
+        score = scorer(NN)
+        scores.append(score)
+
+    best_index = scores.index(max(scores))
+    best_params = param_list(best_index)
+    return best_params
+
+
+def get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks):
+    NN = get_model(*params)
+    NN.memorize_scaler(scaler)
+    result = NN.fit_generator(training_generator=train_gen,
+                              samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
+                              callbacks=callbacks,
+                              validation_generator=val_gen,
+                              nb_val_samples=10**3)
+    lowest_val_loss = min(result.history['val_loss'])
+    print(lowest_val_loss)
+    return NN
+
+
 if __name__ == '__main__':
+    sess = tf.Session()
 
     timestep = float(sys.argv[1])
     nb_past_timesteps = int(sys.argv[2])
@@ -47,7 +82,7 @@ if __name__ == '__main__':
 
     param_grid = {'max_norm_1': randint(1, 5),
                   'nb_hidden_nodes_1': binom(500, 0.5)}
-    param_list = list(ParameterSampler(param_grid, n_iter=50))
+    param_list = list(ParameterSampler(param_grid, n_iter=5))
 
     model_explorer = project_explorer.get_ModelFileExplorer(timestep, model_id)
 
@@ -62,17 +97,16 @@ if __name__ == '__main__':
                                      verbose=1, save_best_only=True,
                                      save_weights_only=True, mode='min'))
 
-    scores = []
-    for params in param_list:
-        NN = get_NN(nb_past_timesteps, nb_features, *params)
-        NN.memorize_scaler(scaler)
-        result = NN.fit_generator(training_generator=train_gen,
-                                  samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
-                                  callbacks=callbacks,
-                                  validation_generator=val_gen,
-                                  nb_val_samples=10**3)
-# Da finire
+    SSA_traj = get_SSA_traj(val_explorer)
+    S_SSA_hist = get_SSA_hist(SSA_traj)
+    nb_traj = SSA_traj.shape[1]
+    scorer = partial(compute_histogram_distance, dataset_explorer=val_explorer,
+                     S_SSA_hist=S_SSA_hist, nb_traj=nb_traj, sess=sess,
+                     model_id=model_id, plot=False, log_results=False)
+    get_model = partial(get_NN, nb_past_timesteps=nb_past_timesteps,
+                        nb_features=nb_features)
 
+    NN = get_best_NN(param_list, get_model, scaler, train_gen, val_gen, callbacks)
     NN.load_weights(checkpoint_filepath)
     NN.save_model(model_explorer.keras_fp)
     NN.save(model_explorer.StochNet_fp)
