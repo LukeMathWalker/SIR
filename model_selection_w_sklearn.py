@@ -16,6 +16,7 @@ def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
            nb_components):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
     flatten1 = Flatten()(input_tensor)
+
     NN_body = Dense(nb_hidden_nodes_1, kernel_constraint=maxnorm(max_norm_1),
                     activation='relu')(flatten1)
 
@@ -30,7 +31,7 @@ def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
 
 
 def get_best_NN(param_list, get_model, scaler, train_gen, val_gen, callbacks):
-    best_params = get_best_params(param_list, scaler, get_model, train_gen, val_gen, callbacks)
+    best_params = get_best_params(param_list, get_model, scaler, train_gen, val_gen, callbacks)
     best_NN = get_trained_NN(best_params, get_model, scaler, train_gen, val_gen, callbacks)
     return best_NN
 
@@ -39,16 +40,16 @@ def get_best_params(param_list, get_model, scaler, train_gen, val_gen, callbacks
     scores = []
     for params in param_list:
         NN = get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks)
-        score = scorer(NN)
+        score = scorer(NN=NN)
         scores.append(score)
 
     best_index = scores.index(max(scores))
-    best_params = param_list(best_index)
+    best_params = param_list[best_index]
     return best_params
 
 
 def get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks):
-    NN = get_model(*params)
+    NN = get_model(**params)
     NN.memorize_scaler(scaler)
     result = NN.fit_generator(training_generator=train_gen,
                               samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
@@ -82,7 +83,7 @@ if __name__ == '__main__':
 
     param_grid = {'max_norm_1': randint(1, 5),
                   'nb_hidden_nodes_1': binom(500, 0.5)}
-    param_list = list(ParameterSampler(param_grid, n_iter=5))
+    param_list = list(ParameterSampler(param_grid, n_iter=2))
 
     model_explorer = project_explorer.get_ModelFileExplorer(timestep, model_id)
 
@@ -104,8 +105,7 @@ if __name__ == '__main__':
                      S_SSA_hist=S_SSA_hist, nb_traj=nb_traj, sess=sess,
                      model_id=model_id, plot=False, log_results=False)
     get_model = partial(get_NN, nb_past_timesteps=nb_past_timesteps,
-                        nb_features=nb_features)
-
+                        nb_features=nb_features, nb_components=2)
     NN = get_best_NN(param_list, get_model, scaler, train_gen, val_gen, callbacks)
     NN.load_weights(checkpoint_filepath)
     NN.save_model(model_explorer.keras_fp)
