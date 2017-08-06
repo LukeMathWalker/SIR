@@ -1,3 +1,4 @@
+#!/home/lucap/anaconda3/bin/python
 import os
 import luigi
 import luigi.contrib.external_program
@@ -141,7 +142,7 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
     timestep = luigi.FloatParameter(default=2**(-1))
     nb_past_timesteps = luigi.IntParameter(default=1)
     model_id = luigi.IntParameter(default=1)
-    nb_histogram_settings = luigi.IntParameter(default=20)
+    nb_histogram_settings = luigi.IntParameter(default=30)
     nb_trajectories = luigi.IntParameter(default=1000)
 
     def requires(self):

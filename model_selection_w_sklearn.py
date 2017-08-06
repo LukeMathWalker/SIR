@@ -3,7 +3,8 @@ import tensorflow as tf
 from functools import partial
 from stochnet.classes.NeuralNetworks import StochNeuralNetwork
 from keras.layers import Input, Dense, Flatten
-from stochnet.utils.file_organization import ProjectFileExplorer, get_train_and_validation_generator_w_scaler
+from stochnet.utils.file_organization import ProjectFileExplorer
+from stochnet.utils.utils import get_train_and_validation_generator_w_scaler
 from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
 from stochnet.applicative.histogram_w_gillespy import compute_histogram_distance, get_SSA_hist, get_SSA_traj
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -13,12 +14,15 @@ from scipy.stats import randint, binom
 
 
 def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
-           nb_components):
+           two_layers, nb_hidden_nodes_2, nb_components):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
     flatten1 = Flatten()(input_tensor)
 
     NN_body = Dense(nb_hidden_nodes_1, kernel_constraint=maxnorm(max_norm_1),
                     activation='relu')(flatten1)
+    if two_layers == 2:
+        NN_body = Dense(nb_hidden_nodes_2, kernel_constraint=maxnorm(max_norm_1),
+                        activation='relu')(NN_body)
 
     number_of_components = nb_components
     components = []
@@ -31,19 +35,23 @@ def get_NN(nb_past_timesteps, nb_features, nb_hidden_nodes_1, max_norm_1,
 
 
 def get_best_NN(param_list, get_model, scaler, train_gen, val_gen, callbacks):
-    best_params = get_best_params(param_list, get_model, scaler, train_gen, val_gen, callbacks)
+    best_params = get_best_params(param_list, get_model, scaler, train_gen, val_gen)
+    print("Parametri migliori: {0}.\n\n".format(best_params))
+    print(param_list)
     best_NN = get_trained_NN(best_params, get_model, scaler, train_gen, val_gen, callbacks)
     return best_NN
 
 
-def get_best_params(param_list, get_model, scaler, train_gen, val_gen, callbacks):
+def get_best_params(param_list, get_model, scaler, train_gen, val_gen):
     scores = []
     for params in param_list:
+        callbacks = [EarlyStopping(monitor='val_loss', patience=3,
+                                   verbose=1, mode='min')]
         NN = get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks)
         score = scorer(NN=NN)
         scores.append(score)
 
-    best_index = scores.index(max(scores))
+    best_index = scores.index(min(scores))
     best_params = param_list[best_index]
     return best_params
 
@@ -52,7 +60,7 @@ def get_trained_NN(params, get_model, scaler, train_gen, val_gen, callbacks):
     NN = get_model(**params)
     NN.memorize_scaler(scaler)
     result = NN.fit_generator(training_generator=train_gen,
-                              samples_per_epoch=3 * 10**4, epochs=5, verbose=1,
+                              samples_per_epoch=3 * 10**4, epochs=25, verbose=1,
                               callbacks=callbacks,
                               validation_generator=val_gen,
                               nb_val_samples=10**3)
@@ -82,8 +90,11 @@ if __name__ == '__main__':
     nb_features = scaler.scale_.shape[0]
 
     param_grid = {'max_norm_1': randint(1, 5),
-                  'nb_hidden_nodes_1': binom(500, 0.5)}
-    param_list = list(ParameterSampler(param_grid, n_iter=2))
+                  'nb_hidden_nodes_1': binom(500, 0.5),
+                  'two_layers': randint(0, 1),
+                  'nb_hidden_nodes_2': binom(120, 0.5)
+                  }
+    param_list = list(ParameterSampler(param_grid, n_iter=100))
 
     model_explorer = project_explorer.get_ModelFileExplorer(timestep, model_id)
 
