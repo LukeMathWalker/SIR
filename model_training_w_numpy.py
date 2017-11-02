@@ -1,7 +1,8 @@
 import sys
 from stochnet.classes.NeuralNetworks import StochNeuralNetwork
 from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
-from stochnet.utils.file_organization import ProjectFileExplorer, get_train_and_validation_generator_w_scaler
+from stochnet.utils.file_organization import ProjectFileExplorer
+from stochnet.utils.utils import get_train_and_validation_generator_w_scaler
 from keras.layers import Input, Dense, Flatten
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm

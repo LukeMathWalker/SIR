@@ -1,27 +1,37 @@
 import os
 import luigi
 import luigi.contrib.external_program
+from luigi.util import inherits, requires
 from importlib import import_module
 from stochnet.utils.file_organization import ProjectFileExplorer
 
 
+python_2_env = '/home/lucap/anaconda3/envs/py2'
+python_3_env = '/home/lucap/anaconda3'
+
+
+class global_params(luigi.Config):
+    project_folder = luigi.Parameter()
+    timestep = luigi.FloatParameter()
+    endtime = luigi.FloatParameter()
+    CRN_name = luigi.Parameter()
+    nb_past_timesteps = luigi.IntParameter()
+
+
+@inherits(global_params)
 class GenerateDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
 
-    project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
-    dataset_id = luigi.IntParameter(default=1)
-    nb_of_settings = luigi.IntParameter(default=25)
-    nb_of_trajectories = luigi.IntParameter(default=100)
-    timestep = luigi.FloatParameter(default=2**(-1))
-    endtime = luigi.IntParameter(default=5)
-    CRN_name = luigi.Parameter(default='SIR')
+    dataset_id = luigi.IntParameter()
+    nb_settings = luigi.IntParameter()
+    nb_trajectories = luigi.IntParameter()
 
-    virtualenv = '/home/lucap/anaconda3/envs/py2'
+    virtualenv = python_2_env
 
     def program_args(self):
         program_module = import_module("stochnet.dataset.simulation_w_gillespy")
         program_address = program_module.__file__
-        return ['python', program_address, self.dataset_id, self.nb_of_settings,
-                self.nb_of_trajectories, self.timestep, self.endtime,
+        return ['python', program_address, self.dataset_id, self.nb_settings,
+                self.nb_trajectories, self.timestep, self.endtime,
                 self.project_folder, self.CRN_name]
 
     def output(self):
@@ -30,17 +40,10 @@ class GenerateDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
         return luigi.LocalTarget(dataset_explorer.dataset_fp)
 
 
+@requires(GenerateDataset)
 class FormatDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
 
-    project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
-    dataset_id = luigi.IntParameter(default=1)
-    timestep = luigi.FloatParameter(default=2**(-1))
-    nb_past_timesteps = luigi.IntParameter(default=1)
-
-    def requires(self):
-        return GenerateDataset(project_folder=self.project_folder,
-                               dataset_id=self.dataset_id,
-                               timestep=self.timestep)
+    virtualenv = python_3_env
 
     def program_args(self):
         program_module = import_module("stochnet.utils.format_np_for_ML")
@@ -58,24 +61,20 @@ class FormatDataset(luigi.contrib.external_program.ExternalPythonProgramTask):
                 luigi.LocalTarget(dataset_explorer.scaler_fp)]
 
 
+@inherits(global_params)
 class TrainNN(luigi.contrib.external_program.ExternalPythonProgramTask):
 
-    project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
-    training_dataset_id = luigi.IntParameter(default=1)
-    validation_dataset_id = luigi.IntParameter(default=2)
-    timestep = luigi.FloatParameter(default=2**(-1))
-    nb_past_timesteps = luigi.IntParameter(default=1)
-    model_id = luigi.IntParameter(default=1)
+    training_dataset_id = luigi.IntParameter()
+    validation_dataset_id = luigi.IntParameter()
+    model_id = luigi.IntParameter()
+    nb_settings = luigi.IntParameter()
+    nb_trajectories = luigi.IntParameter()
+
+    virtualenv = python_3_env
 
     def requires(self):
-        return [FormatDataset(project_folder=self.project_folder,
-                              dataset_id=self.training_dataset_id,
-                              timestep=self.timestep,
-                              nb_past_timesteps=self.nb_past_timesteps),
-                FormatDataset(project_folder=self.project_folder,
-                              dataset_id=self.validation_dataset_id,
-                              timestep=self.timestep,
-                              nb_past_timesteps=self.nb_past_timesteps)]
+        return [self.clone(FormatDataset, dataset_id=self.training_dataset_id),
+                self.clone(FormatDataset, dataset_id=self.validation_dataset_id)]
 
     def program_args(self):
         program_address = os.path.join(self.project_folder,
@@ -93,30 +92,20 @@ class TrainNN(luigi.contrib.external_program.ExternalPythonProgramTask):
                 luigi.LocalTarget(model_explorer.StochNet_fp)]
 
 
+@requires(FormatDataset)
 class GenerateHistogramData(luigi.contrib.external_program.ExternalPythonProgramTask):
 
-    project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
-    dataset_id = luigi.IntParameter(default=1)
-    timestep = luigi.FloatParameter(default=2**(-1))
-    nb_past_timesteps = luigi.IntParameter(default=1)
-    nb_histogram_settings = luigi.IntParameter(default=15)
-    nb_trajectories = luigi.IntParameter(default=500)
-    CRN_name = luigi.Parameter(default='SIR')
+    nb_histogram_settings = luigi.IntParameter()
+    nb_histogram_trajectories = luigi.IntParameter()
 
-    virtualenv = '/home/lucap/anaconda3/envs/py2'
-
-    def requires(self):
-        return FormatDataset(project_folder=self.project_folder,
-                             dataset_id=self.dataset_id,
-                             timestep=self.timestep,
-                             nb_past_timesteps=self.nb_past_timesteps)
+    virtualenv = python_2_env
 
     def program_args(self):
         program_module = import_module("stochnet.dataset.generator_for_histogram_w_gillespy")
         program_address = program_module.__file__
         return ['python', program_address, self.timestep,
                 self.nb_past_timesteps, self.dataset_id,
-                self.nb_histogram_settings, self.nb_trajectories,
+                self.nb_histogram_settings, self.nb_histogram_trajectories,
                 self.project_folder, self.CRN_name]
 
     def output(self):
@@ -126,34 +115,25 @@ class GenerateHistogramData(luigi.contrib.external_program.ExternalPythonProgram
                 luigi.LocalTarget(dataset_explorer.histogram_dataset_fp)]
 
 
+@inherits(global_params)
 class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask):
 
-    project_folder = luigi.Parameter(default='/home/lucap/Documenti/Tesi Magistrale/SIR')
-    training_dataset_id = luigi.IntParameter(default=1)
-    validation_dataset_id = luigi.IntParameter(default=2)
-    timestep = luigi.FloatParameter(default=2**(-1))
-    nb_past_timesteps = luigi.IntParameter(default=1)
-    model_id = luigi.IntParameter(default=1)
-    nb_histogram_settings = luigi.IntParameter(default=20)
-    nb_trajectories = luigi.IntParameter(default=500)
+    training_dataset_id = luigi.IntParameter()
+    validation_dataset_id = luigi.IntParameter()
+    model_id = luigi.IntParameter()
+    nb_settings = luigi.IntParameter()
+    nb_histogram_settings = luigi.IntParameter()
+    nb_histogram_trajectories = luigi.IntParameter()
+    nb_trajectories = luigi.IntParameter()
+
+    virtualenv = python_3_env
 
     def requires(self):
-        return [TrainNN(project_folder=self.project_folder,
-                        training_dataset_id=self.training_dataset_id,
-                        validation_dataset_id=self.validation_dataset_id,
-                        timestep=self.timestep,
-                        nb_past_timesteps=self.nb_past_timesteps,
-                        model_id=self.model_id),
-                GenerateHistogramData(project_folder=self.project_folder,
-                                      dataset_id=self.training_dataset_id,
-                                      timestep=self.timestep,
-                                      nb_past_timesteps=self.nb_past_timesteps,
-                                      nb_histogram_settings=self.nb_histogram_settings),
-                GenerateHistogramData(project_folder=self.project_folder,
-                                      dataset_id=self.validation_dataset_id,
-                                      timestep=self.timestep,
-                                      nb_past_timesteps=self.nb_past_timesteps,
-                                      nb_histogram_settings=self.nb_histogram_settings)]
+        return [self.clone(TrainNN),
+                self.clone(GenerateHistogramData,
+                           dataset_id=self.training_dataset_id),
+                self.clone(GenerateHistogramData,
+                           dataset_id=self.validation_dataset_id)]
 
     def program_args(self):
         program_module = import_module("stochnet.applicative.histogram_w_gillespy")
@@ -173,5 +153,7 @@ class HistogramDistance(luigi.contrib.external_program.ExternalPythonProgramTask
                 luigi.LocalTarget(val_histogram_explorer.log_fp)]
 
 
-if __name__ == '__main__':
-    luigi.run(main_task_cls=HistogramDistance)
+#if __name__ == '__main__':
+#    luigi.run(main_task_cls=HistogramDistance)
+
+# luigi --module luigi_pipeline HistogramDistance --project-folder '/home/lucap/Documenti/Tesi Magistrale/SIR' --timestep 0.5 --endtime 5 --CRN-name 'SIR' --nb-past-timesteps 1 --training-dataset-id 4 --validation-dataset-id 5 --model-id 1 --nb-trajectories 100 --nb-settings 25 --nb-histogram-settings 25 --nb-histogram-trajectories 500
