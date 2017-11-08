@@ -3,14 +3,15 @@ from stochnet.classes.NeuralNetworks import StochNeuralNetwork
 from stochnet.classes.TopLayers import MixtureOutputLayer, MultivariateNormalDiagOutputLayer
 from stochnet.utils.file_organization import ProjectFileExplorer
 from stochnet.utils.utils import get_train_and_validation_generator_w_scaler
-from keras.layers import Input, Dense, Flatten
+from keras.layers import Input, Dense, Flatten, Reshape
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm
+from keras import backend as K
 
 
 def get_NN(nb_past_timesteps, nb_features):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
-    flatten1 = Flatten()(input_tensor)
+    flatten1 = Reshape((nb_features,))(input_tensor)
     NN_body = Dense(500, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
 
     number_of_components = 2
@@ -67,3 +68,6 @@ if __name__ == '__main__':
     NN.load_weights(checkpoint_filepath)
     NN.save_model(model_explorer.keras_fp)
     NN.save(model_explorer.StochNet_fp)
+
+    tf_session = K.get_session()
+    tf_session.close()
