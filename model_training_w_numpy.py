@@ -7,6 +7,7 @@ from keras.layers import Input, Dense, Flatten, Reshape
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.constraints import maxnorm
 from keras import backend as K
+from time import time
 
 
 def get_NN(nb_past_timesteps, nb_features):
@@ -25,6 +26,7 @@ def get_NN(nb_past_timesteps, nb_features):
 
 
 if __name__ == '__main__':
+    start = time()
 
     timestep = float(sys.argv[1])
     nb_past_timesteps = int(sys.argv[2])
@@ -71,3 +73,7 @@ if __name__ == '__main__':
 
     tf_session = K.get_session()
     tf_session.close()
+    end = time()
+    execution_time = end - start
+    with open(model_explorer.log_fp, 'wb') as f:
+        f.write("Training the NN took {3} seconds".format(execution_time))
