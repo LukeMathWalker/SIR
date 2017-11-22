@@ -13,7 +13,7 @@ from time import time
 def get_NN(nb_past_timesteps, nb_features):
     input_tensor = Input(shape=(nb_past_timesteps, nb_features))
     flatten1 = Reshape((nb_features,))(input_tensor)
-    NN_body = Dense(500, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
+    NN_body = Dense(150, kernel_constraint=maxnorm(3), activation='relu')(flatten1)
 
     number_of_components = 2
     components = []
@@ -75,5 +75,5 @@ if __name__ == '__main__':
     tf_session.close()
     end = time()
     execution_time = end - start
-    with open(model_explorer.log_fp, 'wb') as f:
-        f.write("Training the NN took {3} seconds".format(execution_time))
+    with open(model_explorer.log_fp, 'w') as f:
+        f.write("Training the NN took {0} seconds".format(execution_time))
